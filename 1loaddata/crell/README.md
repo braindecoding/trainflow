@@ -28,7 +28,6 @@ This folder contains the processing and analysis of the **Crell dataset** for EE
 ## 🔧 Preprocessing Pipeline
 
 ### **CORRECT Preprocessing Order Applied**
-Following the established `correct_eeg_preprocessing_pipeline.py`:
 
 1. **Bandpass Filtering** (0.5-50 Hz)
    - Applied to RAW data FIRST
@@ -61,12 +60,11 @@ Following the established `correct_eeg_preprocessing_pipeline.py`:
 ## 📁 Files Description
 
 ### **Core Processing Files**
-- `process_crell_data.py` - Main data processing script with CORRECT preprocessing
+- `1process_crell_data.py` - Main data processing script with CORRECT preprocessing
 - `crell_processed_data_correct.pkl` - **Final processed dataset** (use this!)
 
 ### **Exploration Files**
-- `explore_crell_dataset.py` - Initial dataset exploration and structure analysis
-- `check_crell_sampling_rate.py` - Sampling rate verification (confirmed 500 Hz)
+- `2explore_crell_dataset.py` - Initial dataset exploration and structure analysis
 
 ### **Visualization Files**
 - `crell_stimuli_overview.png` - Overview of all 10 letter stimuli
