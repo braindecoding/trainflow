@@ -143,13 +143,14 @@ This dataset is ready for:
 
 ## 📋 Technical Specifications
 
-- **EEG Shape**: (n_epochs, 64, 500)
+- **EEG Shape**: (n_epochs, n_channels, 500)
 - **Image Shape**: (n_epochs, 28, 28)
 - **Sampling Rate**: 500 Hz
 - **Epoch Duration**: 1.0 second
 - **Baseline Period**: 0.2 seconds
 - **Preprocessing**: CORRECT pipeline applied
-- **Data Quality**: Excellent (0% rejection rate)
+- **Data Quality**: Excellent (conservative artifact rejection)
+- **Channel Handling**: Dynamic grid layout for any number of channels
 
 ## 🔗 Related Files
 

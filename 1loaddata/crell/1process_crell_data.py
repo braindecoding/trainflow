@@ -204,6 +204,8 @@ def load_crell_data():
         print(f"   EEG time: {eeg_time.shape}")
         print(f"   Markers: {markers.shape}")
         print(f"   Marker times: {marker_times.shape}")
+        print(f"   Number of channels: {eeg_data.shape[1]}")
+        print(f"   Sampling points: {eeg_data.shape[0]}")
         
         # Filter for letter codes only
         letter_codes = [100, 103, 104, 105, 109, 113, 114, 118, 119, 121]
@@ -464,8 +466,18 @@ def visualize_sample_epochs(data_splits):
         # EEG topography (show at peak time)
         peak_time = np.argmax(np.abs(eeg_avg))
         topo = sample_eeg[i][:, peak_time]
-        im = axes[i, 1].imshow(topo.reshape(8, 8), cmap='RdBu_r', aspect='auto')
-        axes[i, 1].set_title(f'EEG Topography\n(t={peak_time})')
+
+        # Create dynamic grid layout for channels
+        n_channels = len(topo)
+        grid_size = int(np.ceil(np.sqrt(n_channels)))
+        topo_grid = np.zeros((grid_size, grid_size))
+
+        for ch in range(min(n_channels, grid_size * grid_size)):
+            row, col = ch // grid_size, ch % grid_size
+            topo_grid[row, col] = topo[ch] if ch < len(topo) else 0
+
+        im = axes[i, 1].imshow(topo_grid, cmap='RdBu_r', aspect='auto')
+        axes[i, 1].set_title(f'EEG Topography\n(t={peak_time}, {n_channels} ch)')
         axes[i, 1].axis('off')
         
         # Letter stimulus
