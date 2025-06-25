@@ -132,7 +132,7 @@ def step5_normalization(baseline_corrected_signal, method='zscore'):
 
     return normalized
 
-def correct_preprocessing_pipeline(raw_signal, fs=128, target_length=256):
+def correct_preprocessing_pipeline(raw_signal, fs=128, target_length=128):
     """
     Complete CORRECT preprocessing pipeline for single EEG signal
     Apply steps in the CORRECT ORDER:
@@ -287,41 +287,42 @@ def load_mindbigdata_data():
     processed_epochs = []
     processed_labels = []
 
-    # Determine target length and channel order
-    all_channels = set()
-    all_lengths = []
-    for event in complete_events:
-        all_channels.update(event['signals'].keys())
-        all_lengths.extend([len(sig) for sig in event['signals'].values()])
+    # Standardize to EPOC 14 channels and 128 timepoints (1 second at 128 Hz)
+    # EPOC channel order (standard 10-20 system)
+    epoc_channels = ['AF3', 'F7', 'F3', 'FC5', 'T7', 'P7', 'O1', 'O2', 'P8', 'T8', 'FC6', 'F4', 'F8', 'AF4']
+    target_length = 128  # 1 second at 128 Hz
+    target_channels = 14  # EPOC standard
 
-    target_length = max(set(all_lengths), key=all_lengths.count)
-    channel_order = sorted(list(all_channels))
-
-    print(f"   Target signal length: {target_length}")
-    print(f"   Channel order: {channel_order}")
+    print(f"   Standardizing to: {target_channels} channels, {target_length} timepoints")
+    print(f"   Target format: (n_trials, 14, 128)")
+    print(f"   EPOC channel order: {epoc_channels}")
 
     for event in complete_events:
         signals = event['signals']
         label = event['label']
 
-        # Create multi-channel epoch
+        # Create standardized 14-channel epoch
         epoch_channels = []
-        for channel in channel_order:
+        for channel in epoc_channels:
             if channel in signals:
                 signal = signals[channel]
-                # Standardize length
+                # Standardize length to 128 timepoints
                 if len(signal) > target_length:
+                    # Downsample or truncate to 128 points
                     start_idx = (len(signal) - target_length) // 2
                     signal = signal[start_idx:start_idx + target_length]
                 elif len(signal) < target_length:
+                    # Upsample or pad to 128 points
                     signal = signal + [0.0] * (target_length - len(signal))
                 epoch_channels.append(signal)
             else:
                 # Missing channel, fill with zeros
                 epoch_channels.append([0.0] * target_length)
 
-        processed_epochs.append(epoch_channels)
-        processed_labels.append(label)
+        # Ensure exactly 14 channels
+        if len(epoch_channels) == target_channels:
+            processed_epochs.append(epoch_channels)
+            processed_labels.append(label)
 
     # Convert to numpy arrays
     epochs_array = np.array(processed_epochs)  # (n_epochs, n_channels, n_timepoints)
@@ -332,12 +333,12 @@ def load_mindbigdata_data():
     print(f"   Label distribution: {dict(Counter(labels_array))}")
 
     return {
-        'eeg_data': epochs_array,           # (n_epochs, n_channels, n_timepoints)
-        'labels': labels_array,             # (n_epochs,)
+        'eeg_data': epochs_array,           # (n_trials, 14, 128)
+        'labels': labels_array,             # (n_trials,)
         'n_samples': len(epochs_array),
-        'n_timepoints': target_length,
-        'n_channels': len(channel_order),
-        'channel_order': channel_order
+        'n_timepoints': target_length,      # 128
+        'n_channels': target_channels,      # 14
+        'channel_order': epoc_channels      # EPOC channel names
     }
 
 def load_stimuli():
@@ -383,16 +384,18 @@ def load_stimuli():
     return stimuli_data
 
 def process_eeg_signals(mindbigdata_data, stimuli_data):
-    """Process MindBigData EEG signals with CORRECT preprocessing"""
+    """Process MindBigData EEG signals with CORRECT preprocessing to (n_trials, 14, 128) format"""
     print(f"\n🧠 Processing EEG signals with CORRECT preprocessing...")
     print("   Preprocessing order: Filter→Artifact→Baseline→Normalize")
+    print("   Target format: (n_trials, 14, 128)")
 
-    # MindBigData parameters (EPOC device)
+    # Standardized parameters for UltraHighDimExtractor compatibility
     sampling_rate = 128  # EPOC sampling rate
-    target_length = mindbigdata_data['n_timepoints']
+    target_length = 128  # 1 second at 128 Hz
+    target_channels = 14 # EPOC channels
 
-    eeg_data = mindbigdata_data['eeg_data']  # (n_epochs, n_channels, n_timepoints)
-    labels = mindbigdata_data['labels']      # (n_epochs,)
+    eeg_data = mindbigdata_data['eeg_data']  # (n_trials, 14, 128)
+    labels = mindbigdata_data['labels']      # (n_trials,)
     n_channels = mindbigdata_data['n_channels']
 
     all_epochs = []
@@ -401,8 +404,8 @@ def process_eeg_signals(mindbigdata_data, stimuli_data):
     processed_count = 0
     rejected_count = 0
 
-    print(f"   Processing {len(eeg_data)} multi-channel EEG epochs...")
-    print(f"   Channels: {n_channels}, Timepoints: {target_length}")
+    print(f"   Processing {len(eeg_data)} standardized EEG trials...")
+    print(f"   Format: {len(eeg_data)} trials × {n_channels} channels × {target_length} timepoints")
 
     for i, (eeg_epoch, label) in enumerate(zip(eeg_data, labels)):
         # Process each channel separately
@@ -443,18 +446,19 @@ def process_eeg_signals(mindbigdata_data, stimuli_data):
             rejected_count += 1
 
     # Convert to arrays
-    epochs_array = np.array(all_epochs)  # (n_epochs, n_channels, time_points)
-    labels_array = np.array(all_labels)  # (n_epochs,)
-    images_array = np.array(all_images)  # (n_epochs, height, width)
+    epochs_array = np.array(all_epochs)  # (n_trials, 14, 128)
+    labels_array = np.array(all_labels)  # (n_trials,)
+    images_array = np.array(all_images)  # (n_trials, height, width)
 
     print(f"\n✅ CORRECT preprocessing completed:")
-    print(f"   Total epochs processed: {processed_count}")
-    print(f"   Epochs rejected: {rejected_count}")
+    print(f"   Total trials processed: {processed_count}")
+    print(f"   Trials rejected: {rejected_count}")
     print(f"   Rejection rate: {rejected_count/(processed_count+rejected_count)*100:.1f}%")
-    print(f"   Final epoch shape: {epochs_array.shape}")
+    print(f"   Final format: {epochs_array.shape} (n_trials, 14, 128)")
     print(f"   Labels shape: {labels_array.shape}")
     print(f"   Images shape: {images_array.shape}")
     print(f"   Label distribution: {dict(Counter(labels_array))}")
+    print(f"   ✅ Ready for UltraHighDimExtractor: (n_trials, 14*128) = (n_trials, 1792)")
 
     return epochs_array, labels_array, images_array
 
@@ -498,9 +502,9 @@ def create_data_splits(epochs_array, labels_array, images_array, test_size=0.2, 
         test_size=val_size_adjusted, stratify=y_temp, random_state=42
     )
 
-    print(f"   Training set: {X_train.shape[0]} signals")
-    print(f"   Validation set: {X_val.shape[0]} signals")
-    print(f"   Test set: {X_test.shape[0]} signals")
+    print(f"   Training set: {X_train.shape[0]} trials")
+    print(f"   Validation set: {X_val.shape[0]} trials")
+    print(f"   Test set: {X_test.shape[0]} trials")
 
     # Check distribution
     for split_name, split_labels in [('Train', y_train), ('Val', y_val), ('Test', y_test)]:
@@ -527,14 +531,17 @@ def create_data_splits(epochs_array, labels_array, images_array, test_size=0.2, 
             'digit_to_idx': digit_to_idx,
             'idx_to_digit': idx_to_digit,
             'idx_to_digit_name': idx_to_digit_name,
-            'n_channels': epochs_array.shape[1],
-            'n_timepoints': epochs_array.shape[2],
+            'n_channels': 14,                    # Standardized EPOC channels
+            'n_timepoints': 128,                 # Standardized 1 second at 128 Hz
             'n_digits': len(digit_to_idx),
             'sampling_rate': 128,
-            'signal_length': epochs_array.shape[2],
+            'trial_duration': 1.0,               # 1 second trials
             'baseline_duration': 0.2,
             'device': 'EPOC',
-            'dataset': 'MindBigData'
+            'dataset': 'MindBigData',
+            'format': '(n_trials, 14, 128)',     # Standard format for UltraHighDimExtractor
+            'flattened_features': 14 * 128,     # 1792 features when flattened
+            'ultrahighdim_ready': True
         }
     }
 
@@ -631,12 +638,18 @@ def main():
         'processing_order': 'CORRECT: Filter→Artifact→Baseline→Normalize'
     }
 
-    # Save processed data
+    # Save processed data (standard format)
     with open('mindbigdata_processed_data_correct.pkl', 'wb') as f:
         pickle.dump(data_splits, f)
 
+    # Prepare and save UltraHighDimExtractor format
+    ultrahighdim_data = prepare_for_ultrahighdim(data_splits)
+    with open('mindbigdata_ultrahighdim_ready.pkl', 'wb') as f:
+        pickle.dump(ultrahighdim_data, f)
+
     print(f"\n✅ CORRECT preprocessing completed!")
-    print(f"   Processed data saved to 'mindbigdata_processed_data_correct.pkl'")
+    print(f"   Standard format saved to: 'mindbigdata_processed_data_correct.pkl'")
+    print(f"   UltraHighDimExtractor format saved to: 'mindbigdata_ultrahighdim_ready.pkl'")
 
     # Create visualization
     visualize_sample_epochs(data_splits)
@@ -645,13 +658,18 @@ def main():
     print(f"\n🎯 MINDBIGDATA DATASET SUMMARY:")
     print(f"   Task: EEG-to-Digit reconstruction")
     print(f"   Digits: {data_splits['metadata']['n_digits']} digits (0-9)")
-    print(f"   EEG channels: {data_splits['metadata']['n_channels']}")
-    print(f"   Time points per signal: {data_splits['metadata']['n_timepoints']}")
+    print(f"   Format: {data_splits['metadata']['format']}")
+    print(f"   EEG channels: {data_splits['metadata']['n_channels']} (EPOC)")
+    print(f"   Time points per trial: {data_splits['metadata']['n_timepoints']}")
+    print(f"   Trial duration: {data_splits['metadata']['trial_duration']} second")
     print(f"   Sampling rate: {data_splits['metadata']['sampling_rate']} Hz")
-    print(f"   Total signals: {sum(len(split['eeg']) for split in [data_splits['training'], data_splits['validation'], data_splits['test']])}")
+    print(f"   Total trials: {sum(len(split['eeg']) for split in [data_splits['training'], data_splits['validation'], data_splits['test']])}")
+    print(f"   Flattened features: {data_splits['metadata']['flattened_features']} (14×128)")
+    print(f"   UltraHighDimExtractor ready: {data_splits['metadata']['ultrahighdim_ready']}")
 
     print(f"\n📁 Generated files:")
-    print(f"   - mindbigdata_processed_data_correct.pkl (with CORRECT preprocessing)")
+    print(f"   - mindbigdata_processed_data_correct.pkl (standard format: n_trials, 14, 128)")
+    print(f"   - mindbigdata_ultrahighdim_ready.pkl (flattened format: n_trials, 1792)")
     print(f"   - mindbigdata_sample_epochs.png")
 
     print(f"\n🔧 CORRECT Preprocessing Applied:")
@@ -661,6 +679,44 @@ def main():
     print(f"   ✅ Step 4: Z-score normalization (FINAL step)")
 
     print(f"\n🚀 Ready for EEG-to-Digit modeling with CORRECT preprocessing!")
+
+def prepare_for_ultrahighdim(data_splits):
+    """
+    Prepare processed data for UltraHighDimExtractor
+    Convert from (n_trials, 14, 128) to (n_trials, 1792) format
+    """
+    print(f"\n🔧 Preparing data for UltraHighDimExtractor...")
+
+    prepared_splits = {}
+
+    for split_name, split_data in data_splits.items():
+        if split_name == 'metadata' or split_name == 'preprocessing_metadata':
+            prepared_splits[split_name] = split_data
+            continue
+
+        eeg_data = split_data['eeg']  # (n_trials, 14, 128)
+        labels = split_data['labels']
+        images = split_data['images']
+
+        # Flatten EEG data: (n_trials, 14, 128) -> (n_trials, 1792)
+        flattened_eeg = eeg_data.reshape(eeg_data.shape[0], -1)
+
+        prepared_splits[split_name] = {
+            'eeg': flattened_eeg,      # (n_trials, 1792)
+            'labels': labels,          # (n_trials,)
+            'images': images           # (n_trials, 28, 28)
+        }
+
+        print(f"   {split_name.capitalize()}: {eeg_data.shape} -> {flattened_eeg.shape}")
+
+    # Update metadata
+    prepared_splits['metadata']['flattened_shape'] = f"(n_trials, {14*128})"
+    prepared_splits['metadata']['original_shape'] = "(n_trials, 14, 128)"
+
+    print(f"   ✅ Ready for UltraHighDimExtractor with {14*128} features per trial")
+
+    return prepared_splits
+
 
 if __name__ == "__main__":
     main()
