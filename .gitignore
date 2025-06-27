@@ -10,7 +10,7 @@ __pycache__/
 *.npy
 # C extensions
 *.so
-
+*.pth
 # Distribution / packaging
 .Python
 build/
