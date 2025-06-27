@@ -1,0 +1,225 @@
+# Advanced Feature Extraction Configuration
+# ========================================
+
+# Global settings
+global:
+  random_seed: 42
+  n_jobs: -1
+  verbose: true
+  save_intermediate: false
+
+# Data settings
+data:
+  input_path: "../../1loaddata/mindbigdata/"
+  output_base: "./outputs/"
+  subset_path: "../mindbigdata/mindbigdata_stratified_subset_1500.pkl"
+  
+# Preprocessing settings
+preprocessing:
+  # Enhanced preprocessing options
+  artifact_removal:
+    enabled: true
+    method: "ica"  # ica, asr, both
+    ica_components: 14
+  
+  filtering:
+    enabled: true
+    lowpass: 50.0
+    highpass: 0.5
+    notch: [50, 60]  # Power line noise
+  
+  baseline_correction:
+    enabled: true
+    method: "trial_wise"  # trial_wise, global, none
+    baseline_window: [-0.2, 0.0]
+  
+  quality_assessment:
+    enabled: true
+    snr_threshold: 3.0
+    artifact_threshold: 0.1
+
+# Feature extraction methods
+extraction_methods:
+  
+  # UltraHighDim v2 (optimized)
+  ultrahighdim_v2:
+    enabled: true
+    target_features: 10000  # Reduced from 39K
+    wavelets: ["db4", "db8", "coif5"]
+    dwt_levels: 5  # Reduced from 6
+    wpd_levels: 4  # Reduced from 5
+    feature_types:
+      - "statistical"
+      - "energy" 
+      - "entropy"
+      - "morphological"
+    quality_filter: true
+  
+  # Spectral features (advanced)
+  spectral_advanced:
+    enabled: true
+    methods:
+      - "welch_psd"
+      - "multitaper"
+      - "morlet_wavelet"
+    frequency_bands:
+      delta: [0.5, 4]
+      theta: [4, 8] 
+      alpha: [8, 13]
+      beta: [13, 30]
+      gamma: [30, 50]
+    features_per_band: 50
+  
+  # Connectivity features
+  connectivity:
+    enabled: true
+    methods:
+      - "coherence"
+      - "phase_coupling"
+      - "mutual_information"
+    window_size: 1.0
+    overlap: 0.5
+    features_per_pair: 10
+  
+  # Nonlinear features
+  nonlinear:
+    enabled: true
+    methods:
+      - "sample_entropy"
+      - "permutation_entropy"
+      - "fractal_dimension"
+      - "lyapunov_exponent"
+    embedding_dim: 3
+    tolerance: 0.2
+
+# Feature selection methods
+selection_methods:
+  
+  # F-score selection
+  f_score:
+    enabled: true
+    feature_counts: [500, 1000, 2000, 5000]
+    score_func: "f_classif"
+  
+  # Mutual information
+  mutual_info:
+    enabled: true
+    feature_counts: [500, 1000, 2000, 5000]
+    score_func: "mutual_info_classif"
+    discrete_features: false
+  
+  # Recursive feature elimination
+  rfe:
+    enabled: true
+    estimator: "random_forest"
+    feature_counts: [1000, 2000]
+    cv_folds: 3
+  
+  # Stability selection
+  stability:
+    enabled: true
+    estimator: "lasso"
+    feature_counts: [1000, 2000]
+    n_bootstrap: 100
+    threshold: 0.6
+
+# Dimensionality reduction
+dimensionality_reduction:
+  
+  # PCA
+  pca:
+    enabled: true
+    variance_thresholds: [0.90, 0.95, 0.99]
+    max_components: 5000
+  
+  # Independent Component Analysis
+  ica:
+    enabled: true
+    n_components: [500, 1000, 2000]
+    algorithm: "fastica"
+  
+  # Non-negative Matrix Factorization
+  nmf:
+    enabled: false
+    n_components: [500, 1000]
+    init: "nndsvd"
+
+# Hybrid methods
+hybrid_methods:
+  
+  # F-score + PCA
+  f_score_pca:
+    enabled: true
+    f_score_features: 2000
+    pca_components: 1000
+    variance_threshold: 0.95
+  
+  # Stability + ICA
+  stability_ica:
+    enabled: true
+    stability_features: 2000
+    ica_components: 1000
+  
+  # Multi-method ensemble
+  ensemble:
+    enabled: true
+    methods: ["f_score", "mutual_info", "rfe"]
+    feature_counts: [1000, 2000]
+    combination: "intersection"  # intersection, union, voting
+
+# Domain-specific features
+domain_specific:
+  
+  # EEG-to-image optimized
+  eeg_image:
+    enabled: true
+    visual_cortex_inspired: true
+    cross_modal_features: true
+    temporal_coherence: true
+    spatial_coherence: true
+    high_freq_preservation: true
+    target_features: 1000
+  
+  # Cross-frequency coupling
+  cross_freq:
+    enabled: true
+    phase_amplitude_coupling: true
+    frequency_pairs:
+      - ["theta", "gamma"]
+      - ["alpha", "beta"]
+    coupling_metrics: ["modulation_index", "phase_locking"]
+
+# Quality assessment
+quality:
+  classification_benchmark: true
+  stability_analysis: true
+  redundancy_analysis: true
+  information_content: true
+  
+# Output settings
+output:
+  formats: ["pkl", "npz"]
+  compression: true
+  metadata_detailed: true
+  
+  # Feature set categories
+  categories:
+    compact:
+      description: "Fast prototyping"
+      feature_range: [500, 1000]
+      methods: ["f_score", "pca"]
+    
+    standard:
+      description: "CLIP training optimized"
+      feature_range: [1000, 2000] 
+      methods: ["f_score", "hybrid", "domain_specific"]
+    
+    rich:
+      description: "Comprehensive analysis"
+      feature_range: [2000, 5000]
+      methods: ["all"]
+    
+    research:
+      description: "Full exploration"
+      feature_range: [5000, 10000]
+      methods: ["all"]

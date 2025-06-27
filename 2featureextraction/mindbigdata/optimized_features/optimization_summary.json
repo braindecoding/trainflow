@@ -1,0 +1,35 @@
+{
+  "original_features": 39368,
+  "optimized_sets": [
+    "f_score_1000",
+    "mutual_info_1000",
+    "f_score_2000",
+    "mutual_info_2000",
+    "f_score_5000",
+    "mutual_info_5000",
+    "pca_90",
+    "pca_95",
+    "pca_99",
+    "hybrid_f_pca_1000"
+  ],
+  "recommendations": {
+    "for_clip_training": [
+      "f_score_1000",
+      "f_score_2000",
+      "hybrid_f_pca_1000"
+    ],
+    "for_efficiency": [
+      "pca_90",
+      "pca_95"
+    ],
+    "for_analysis": [
+      "f_score_5000",
+      "mutual_info_5000"
+    ]
+  },
+  "performance_notes": {
+    "f_score_1000": "Best classification performance (69% accuracy)",
+    "pca_95": "Good dimensionality reduction with 95% variance",
+    "hybrid_f_pca_1000": "Balanced approach: selection + reduction"
+  }
+}
