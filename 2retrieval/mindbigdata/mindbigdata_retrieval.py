@@ -39,11 +39,11 @@ class MindBigDataRetrieval:
     """
     
     def __init__(self,
-                 eeg_data_path=r"d:\trainflow\1loaddata\preprocessed_full_production",
+                 eeg_data_path=r"d:\trainflow\1loaddata\mindbigdata2\outputs_final",
                  stimuli_path=r"d:\trainflow\dataset\datasets\MindbigdataStimuli",
                  output_path=r"d:\trainflow\2retrieval\outputs\mindbigdata_pairs",
                  train=True,
-                 time_window=[0, 2.0],
+                 time_window=[0, 1.8],  # Updated for 450 timepoints at 250Hz
                  use_cached_features=True):
         
         self.eeg_data_path = eeg_data_path
@@ -91,7 +91,7 @@ class MindBigDataRetrieval:
             labels_file = os.path.join(self.eeg_data_path, "test_labels.npy")
         
         # Load data
-        eeg_data = np.load(data_file)  # (N, 14, 256)
+        eeg_data = np.load(data_file)  # (N, 14, 450) - Things-EEG2 compatible format
         labels = np.load(labels_file)  # (N,)
         
         # Convert to torch tensors

@@ -1,15 +1,15 @@
 {
   "mode": "train",
-  "n_trials": 51900,
+  "n_trials": 1048,
   "n_classes": 10,
   "eeg_shape": [
-    51900,
+    1048,
     14,
-    256
+    230
   ],
   "time_window": [
     0,
-    2.0
+    1.8
   ],
   "model_type": "ViT-B_32",
   "stimuli_path": "d:\\trainflow\\dataset\\datasets\\MindbigdataStimuli"
