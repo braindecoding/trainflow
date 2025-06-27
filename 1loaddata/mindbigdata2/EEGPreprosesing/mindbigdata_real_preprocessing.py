@@ -120,16 +120,16 @@ class MindBigDataRealPreprocessor:
         
         return dataset
     
-    def create_mne_epochs(self, trial_data, digit_label):
+    def process_trial_data(self, trial_data, digit_label):
         """
-        Convert single trial to MNE Epochs format
-        
+        Process single trial data without problematic epoching
+
         Args:
             trial_data: EEG data array (n_channels, n_timepoints)
             digit_label: Digit label (0-9)
-            
+
         Returns:
-            MNE Epochs object
+            Processed trial data
         """
         # Ensure correct shape
         if trial_data.shape[0] != len(self.ch_names):
@@ -143,43 +143,79 @@ class MindBigDataRealPreprocessor:
             else:
                 # Truncate
                 trial_data = trial_data[:len(self.ch_names)]
-        
-        # Create MNE info
+
+        # Create MNE info for proper processing
         info = mne.create_info(
             ch_names=self.ch_names,
-            sfreq=self.sfreq,
+            sfreq=128,  # Original sampling rate
             ch_types=self.ch_types,
             verbose=False
         )
-        
-        # Create raw data (add batch dimension)
-        raw_data = trial_data.reshape(len(self.ch_names), -1)
-        
-        # Create MNE Raw object
-        raw = mne.io.RawArray(raw_data, info, verbose=False)
-        
-        # Create events (single event at time 0)
-        n_samples = raw_data.shape[1]
-        event_time = n_samples // 2  # Event in the middle
-        events = np.array([[event_time, 0, digit_label]])
-        
-        # Create epochs - Things-EEG2 style
-        epochs = mne.Epochs(
-            raw, events,
-            event_id={str(digit_label): digit_label},
-            tmin=self.epoch_tmin,
-            tmax=self.epoch_tmax,
-            baseline=self.baseline,
-            preload=True,
-            verbose=False
-        )
 
-        # Resampling if needed (Things-EEG2 style)
-        if self.sfreq < 1000 and raw.info['sfreq'] != self.sfreq:
-            epochs.resample(self.sfreq)
+        # Create MNE Raw object for filtering
+        raw = mne.io.RawArray(trial_data, info, verbose=False)
 
-        return epochs
-    
+        # Apply filtering if specified
+        if self.filter_low is not None and self.filter_high is not None:
+            raw.filter(l_freq=self.filter_low, h_freq=self.filter_high, verbose=False)
+
+        # Resample if needed
+        if self.sfreq != 128:
+            raw.resample(self.sfreq, verbose=False)
+
+        # Get processed data
+        processed_data = raw.get_data()
+
+        # Remove edge artifacts (Things-EEG2 style: remove first 50 timepoints)
+        edge_removal = 50
+        if processed_data.shape[1] > edge_removal:
+            processed_data = processed_data[:, edge_removal:]
+            logger.debug(f"Removed first {edge_removal} timepoints (edge artifacts)")
+
+        # Apply baseline correction manually
+        if self.baseline is not None:
+            baseline_start, baseline_end = self.baseline
+            if baseline_start is None:
+                baseline_start = 0
+            if baseline_end is None:
+                baseline_end = int(0.2 * self.sfreq)  # 200ms baseline
+            else:
+                baseline_end = int((baseline_end + 0.2) * self.sfreq)  # Convert to samples
+
+            baseline_start = max(0, baseline_start)
+            baseline_end = min(processed_data.shape[1], baseline_end)
+
+            if baseline_end > baseline_start:
+                baseline_mean = np.mean(processed_data[:, baseline_start:baseline_end], axis=1, keepdims=True)
+                processed_data = processed_data - baseline_mean
+
+        return processed_data, digit_label
+
+    def apply_artifact_rejection_check(self, trial_data, threshold=100.0):
+        """
+        Check if trial should be rejected based on amplitude threshold
+
+        Args:
+            trial_data: EEG data array (n_channels, n_timepoints)
+            threshold: Amplitude threshold (100.0 for normalized data)
+
+        Returns:
+            bool: True if trial is acceptable, False if should be rejected
+        """
+        # Check for extreme amplitudes (data is already normalized)
+        max_amp = np.max(np.abs(trial_data))
+
+        # Reject if any channel exceeds threshold
+        if max_amp > threshold:
+            return False
+
+        # Check for flat channels (no signal)
+        for ch in range(trial_data.shape[0]):
+            if np.std(trial_data[ch, :]) < 1e-6:  # Very small std indicates flat signal
+                return False
+
+        return True
+
     def apply_filtering(self, epochs):
         """Apply bandpass filtering - Things-EEG2 compatible"""
         if self.filter_low is not None and self.filter_high is not None:
@@ -312,52 +348,33 @@ class MindBigDataRealPreprocessor:
         logger.info(f"📊 Processing {len(eeg_data)} REAL trials...")
         
         # Process each trial with advanced pipeline
-        epochs_list = []
+        processed_data_list = []
         valid_labels = []
         
         for i, (trial, label) in enumerate(zip(eeg_data, labels)):
             try:
-                # Create MNE epochs
-                epochs = self.create_mne_epochs(trial, label)
-                
-                # Apply filtering (Things-EEG2: no filtering)
-                epochs = self.apply_filtering(epochs)
+                # Process trial data without problematic epoching
+                processed_trial, processed_label = self.process_trial_data(trial, label)
 
-                # Apply artifact rejection (Things-EEG2: no artifact rejection)
-                epochs = self.apply_artifact_rejection(epochs, reject_criteria=None)
-                
-                # Check if epochs survived artifact rejection
-                if len(epochs) > 0:
-                    epochs_list.append(epochs)
-                    valid_labels.append(label)
+                # Apply artifact rejection based on amplitude
+                if self.apply_artifact_rejection_check(processed_trial):
+                    processed_data_list.append(processed_trial)
+                    valid_labels.append(processed_label)
                 else:
                     logger.warning(f"Trial {i} rejected due to artifacts")
-                    
+
             except Exception as e:
                 logger.error(f"Error processing trial {i}: {e}")
                 continue
-            
+
             if (i + 1) % 100 == 0:
                 logger.info(f"   Processed {i + 1}/{len(eeg_data)} trials")
         
-        logger.info(f"✅ Successfully processed {len(epochs_list)}/{len(eeg_data)} trials")
-        
-        # Extract final data first
-        processed_data = []
-        final_labels = []
+        logger.info(f"✅ Successfully processed {len(processed_data_list)}/{len(eeg_data)} trials")
 
-        for epochs, label in zip(epochs_list, valid_labels):
-            data = epochs.get_data()  # (n_epochs, n_channels, n_times)
-
-            # Should be single epoch per trial
-            if data.shape[0] == 1:
-                processed_data.append(data[0])  # (n_channels, n_times)
-                final_labels.append(label)
-            else:
-                logger.warning(f"Unexpected epoch count: {data.shape[0]}")
-
-        processed_data = np.array(processed_data)
-        final_labels = np.array(final_labels)
+        # Convert to arrays
+        processed_data = np.array(processed_data_list)  # (n_trials, n_channels, n_times)
+        final_labels = np.array(valid_labels)
 
         # Train/test split
         n_trials = len(processed_data)
@@ -382,9 +399,10 @@ class MindBigDataRealPreprocessor:
             test_data, train_data = self.apply_mvnn_method(train_data, test_data)
         
         # Get time points and channel names
-        if epochs_list:
-            times = epochs_list[0].times
-            ch_names = epochs_list[0].ch_names
+        if len(processed_data) > 0:
+            n_times = processed_data.shape[2]
+            times = np.linspace(self.epoch_tmin, self.epoch_tmax, n_times)
+            ch_names = self.ch_names
         else:
             times = None
             ch_names = self.ch_names
