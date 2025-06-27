@@ -24,7 +24,8 @@ import argparse
 
 # Import our MindBigData loader
 import sys
-sys.path.append('..')
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mindbigdata_loader import MindBigDataLoader
 
 # Import Things-EEG2 preprocessing functions
@@ -169,44 +170,74 @@ class MindBigDataAdapter:
     def adapt_to_things_eeg2_format(self, test_epochs: Dict, train_epochs: Dict) -> Tuple:
         """
         Adapt to Things-EEG2 expected format
-        
+
         Returns format expected by mvnn() and save_prepr()
         """
         logger.info("🔄 Adapting to Things-EEG2 format...")
-        
+
         # Convert epochs dict to format expected by Things-EEG2
-        # Things-EEG2 expects: sessions × conditions × repetitions × channels × times
-        
+        # Things-EEG2 expects: sessions × [conditions_array] where conditions_array is (n_conditions, n_trials, n_channels, n_times)
+
         # For MindBigData, we simulate 1 session with multiple conditions
-        epoched_test = {}
-        epoched_train = {}
-        
-        # Test data
-        epoched_test[0] = {}  # Session 0
-        for digit, epochs in test_epochs.items():
-            data = epochs.get_data()  # (n_trials, n_channels, n_times)
-            epoched_test[0][digit] = data
-        
-        # Train data  
-        epoched_train[0] = {}  # Session 0
+        epoched_test = []
+        epoched_train = []
+
+        # Test data - convert to array format
+        test_conditions_list = []
+        for digit in sorted(test_epochs.keys()):
+            if digit in test_epochs:
+                data = test_epochs[digit].get_data()  # (n_trials, n_channels, n_times)
+                test_conditions_list.append(data)
+
+        if test_conditions_list:
+            # Stack conditions: (n_conditions, max_trials, n_channels, n_times)
+            max_trials_test = max(len(cond) for cond in test_conditions_list)
+            n_conditions = len(test_conditions_list)
+            n_channels = test_conditions_list[0].shape[1]
+            n_times = test_conditions_list[0].shape[2]
+
+            test_array = np.zeros((n_conditions, max_trials_test, n_channels, n_times))
+            for i, cond_data in enumerate(test_conditions_list):
+                test_array[i, :len(cond_data)] = cond_data
+
+            epoched_test.append(test_array)  # Session 0
+
+        # Train data - convert to array format
+        train_conditions_list = []
         img_conditions_train = []
-        
-        for digit, epochs in train_epochs.items():
-            data = epochs.get_data()  # (n_trials, n_channels, n_times)
-            epoched_train[0][digit] = data
-            img_conditions_train.extend([digit] * len(data))
-        
+
+        # Flatten all training data and create condition labels
+        all_train_data = []
+        for digit in sorted(train_epochs.keys()):
+            if digit in train_epochs:
+                data = train_epochs[digit].get_data()  # (n_trials, n_channels, n_times)
+                train_conditions_list.append(data)
+                # Flatten trials and add to all_train_data
+                for trial in data:
+                    all_train_data.append(trial)
+                    # Use 1-based indexing for compatibility with Things-EEG2
+                    img_conditions_train.append(digit + 1)
+
+        if all_train_data:
+            # Convert flattened data to array: (n_all_trials, n_channels, n_times)
+            all_train_array = np.array(all_train_data)
+            epoched_train.append(all_train_array)  # Session 0
+
         # Get channel names and times from first available epochs
         first_epochs = next(iter(train_epochs.values()))
         ch_names = first_epochs.ch_names
         times = first_epochs.times
-        
+
+        # Convert img_conditions_train to numpy array
+        img_conditions_train = np.array(img_conditions_train)
+
         logger.info(f"✅ Adapted to Things-EEG2 format:")
-        logger.info(f"   Test conditions: {len(epoched_test[0])}")
-        logger.info(f"   Train conditions: {len(epoched_train[0])}")
+        logger.info(f"   Test shape: {epoched_test[0].shape if epoched_test else 'None'}")
+        logger.info(f"   Train shape: {epoched_train[0].shape if epoched_train else 'None'}")
         logger.info(f"   Channels: {len(ch_names)}")
         logger.info(f"   Time points: {len(times)}")
-        
+        logger.info(f"   Conditions: {len(np.unique(img_conditions_train))} unique")
+
         return epoched_test, epoched_train, img_conditions_train, ch_names, times
     
     def run_preprocessing_pipeline(self, tsv_path: str, output_dir: str, 

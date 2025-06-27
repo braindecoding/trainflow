@@ -7,7 +7,7 @@ __pycache__/
 *.mat
 *.jpg
 *.txt
-
+*.npy
 # C extensions
 *.so
 
