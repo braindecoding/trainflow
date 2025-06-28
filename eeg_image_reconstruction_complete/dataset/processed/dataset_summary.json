@@ -1,0 +1,20 @@
+{
+  "original_total_lines": 910476,
+  "processed_lines": 100000,
+  "valid_samples": 100000,
+  "train_samples": 79996,
+  "test_samples": 20004,
+  "subject_distribution": {
+    "0": 9982,
+    "1": 9730,
+    "2": 10346,
+    "3": 10178,
+    "4": 9926,
+    "5": 10344,
+    "6": 9814,
+    "7": 9408,
+    "8": 10164,
+    "9": 10108
+  },
+  "max_samples_limit": 60000
+}

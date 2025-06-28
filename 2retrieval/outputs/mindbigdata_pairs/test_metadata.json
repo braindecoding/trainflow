@@ -1,9 +1,9 @@
 {
   "mode": "test",
-  "n_trials": 263,
+  "n_trials": 6675,
   "n_classes": 10,
   "eeg_shape": [
-    263,
+    6675,
     14,
     230
   ],

@@ -1,0 +1,42 @@
+# Large data files (>50MB)
+*.csv
+*.npy
+*.pt
+*.pth
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Dataset directories
+dataset/processed/
+outputs/
+outputs_final/
+__pycache__/
+*.pyc
+
+# Large model files
+*.bin
+*.safetensors
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Log files
+*.log
+logs/
+
+# Environment files
+.env
+.venv
+env/
+venv/

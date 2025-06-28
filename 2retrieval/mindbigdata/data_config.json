@@ -1,0 +1,29 @@
+{
+    "data_path": "d:/trainflow/2retrieval/outputs/mindbigdata_pairs",
+    "img_directory_training": "d:/trainflow/dataset/datasets/MindbigdataStimuli",
+    "img_directory_test": "d:/trainflow/dataset/datasets/MindbigdataStimuli",
+    "description": "MindBigData configuration for ATMS retrieval",
+    "dataset_info": {
+        "name": "MindBigData",
+        "classes": 10,
+        "channels": 14,
+        "sampling_rate": 250,
+        "timepoints": 230,
+        "subjects": 1,
+        "train_trials": 1048,
+        "test_trials": 263
+    },
+    "preprocessing": {
+        "time_window": [0, 1.8],
+        "baseline_correction": true,
+        "mvnn_applied": true,
+        "edge_artifacts_removed": true,
+        "things_eeg2_compatible": true
+    },
+    "clip_features": {
+        "model": "ViT-B/32",
+        "feature_dim": 512,
+        "text_template": "This picture is digit {digit}",
+        "cached": true
+    }
+}

@@ -44,10 +44,10 @@ print(f"Using device: {device}")
 class Config:
     def __init__(self):
         self.task_name = 'classification'
-        self.seq_len = 256                 # MindBigData: 256 timepoints (2 seconds at 128Hz)
-        self.pred_len = 256
+        self.seq_len = 230                 # MindBigData: 230 timepoints (1.8s at 250Hz)
+        self.pred_len = 230
         self.output_attention = False
-        self.d_model = 256                 # Adjusted for MindBigData
+        self.d_model = 230                 # Match sequence length
         self.embed = 'timeF'
         self.freq = 'h'
         self.dropout = 0.25
@@ -203,11 +203,11 @@ class Proj_eeg(nn.Sequential):
 
 class ATMS_MindBigData(nn.Module):    
     """ATMS model adapted for MindBigData"""
-    def __init__(self, num_channels=14, sequence_length=256, num_subjects=1, num_features=64, num_latents=512, num_blocks=1):
+    def __init__(self, num_channels=14, sequence_length=230, num_subjects=1, num_features=64, num_latents=512, num_blocks=1):
         super(ATMS_MindBigData, self).__init__()
-        
+
         self.enc_eeg = Enc_eeg()
-        self.proj_eeg = Proj_eeg(embedding_dim=1480, proj_dim=512)  # Project to CLIP dimension
+        self.proj_eeg = Proj_eeg(embedding_dim=1280, proj_dim=512)  # Project to CLIP dimension
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         
         # Simple loss function for MindBigData
