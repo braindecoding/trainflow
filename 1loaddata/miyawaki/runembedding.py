@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+from torch.amp import autocast, GradScaler
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
@@ -93,7 +94,18 @@ class MiyawakiDecoder:
         self.scaler = StandardScaler()
         
         print(f"Using device: {self.device}")
-        
+
+        # Print GPU info if available
+        if self.device == 'cuda':
+            print(f"GPU: {torch.cuda.get_device_name()}")
+            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
+    def clear_gpu_memory(self):
+        """Clear GPU memory cache"""
+        if self.device == 'cuda':
+            torch.cuda.empty_cache()
+            print("GPU memory cache cleared")
+
     def load_data(self, mat_file_path):
         """Load data dari file .mat"""
         print("Loading data from .mat file...")
@@ -151,19 +163,24 @@ class MiyawakiDecoder:
         train_dataset = MiyawakiDataset(self.fmri_train, self.stim_train, transform)
         test_dataset = MiyawakiDataset(self.fmri_test, self.stim_test, transform)
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                 num_workers=4, pin_memory=True if self.device == 'cuda' else False)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                                num_workers=4, pin_memory=True if self.device == 'cuda' else False)
         
         return train_loader, test_loader
     
-    def train(self, train_loader, epochs=100, lr=1e-3):
-        """Training loop"""
+    def train(self, train_loader, epochs=100, lr=1e-3, use_amp=True):
+        """Training loop with mixed precision support"""
         print("Starting training...")
-        
+
         optimizer = optim.Adam(self.fmri_encoder.parameters(), lr=lr, weight_decay=1e-4)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
         criterion = ContrastiveLoss(temperature=0.07)
-        
+
+        # Mixed precision scaler
+        scaler = GradScaler('cuda') if use_amp and self.device == 'cuda' else None
+
         train_losses = []
         
         for epoch in range(epochs):
@@ -171,24 +188,43 @@ class MiyawakiDecoder:
             epoch_loss = 0.0
             
             for batch_idx, (fmri, images) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}")):
-                fmri = fmri.to(self.device)
-                images = images.to(self.device)
-                
-                # Get embeddings
-                fmri_emb = self.fmri_encoder(fmri)
-                
-                with torch.no_grad():
-                    image_emb = self.clip_model.encode_image(images)
-                    image_emb = F.normalize(image_emb.float(), dim=-1)
-                
-                # Compute loss
-                loss = criterion(fmri_emb, image_emb)
-                
-                # Backward pass
+                fmri = fmri.to(self.device, non_blocking=True)
+                images = images.to(self.device, non_blocking=True)
+
                 optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                
+
+                # Mixed precision forward pass
+                if scaler is not None:
+                    with autocast('cuda'):
+                        # Get embeddings
+                        fmri_emb = self.fmri_encoder(fmri)
+
+                        with torch.no_grad():
+                            image_emb = self.clip_model.encode_image(images)
+                            image_emb = F.normalize(image_emb.float(), dim=-1)
+
+                        # Compute loss
+                        loss = criterion(fmri_emb, image_emb)
+
+                    # Backward pass with scaling
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    # Regular precision
+                    fmri_emb = self.fmri_encoder(fmri)
+
+                    with torch.no_grad():
+                        image_emb = self.clip_model.encode_image(images)
+                        image_emb = F.normalize(image_emb.float(), dim=-1)
+
+                    # Compute loss
+                    loss = criterion(fmri_emb, image_emb)
+
+                    # Backward pass
+                    loss.backward()
+                    optimizer.step()
+
                 epoch_loss += loss.item()
             
             scheduler.step()
@@ -196,7 +232,12 @@ class MiyawakiDecoder:
             train_losses.append(avg_loss)
             
             if (epoch + 1) % 10 == 0:
-                print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+                gpu_mem = f", GPU Mem: {torch.cuda.memory_allocated()/1e9:.1f}GB" if self.device == 'cuda' else ""
+                print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}{gpu_mem}")
+
+                # Clear GPU cache periodically
+                if (epoch + 1) % 50 == 0:
+                    self.clear_gpu_memory()
         
         return train_losses
     
@@ -211,8 +252,8 @@ class MiyawakiDecoder:
         
         with torch.no_grad():
             for fmri, images in tqdm(test_loader, desc="Computing embeddings"):
-                fmri = fmri.to(self.device)
-                images = images.to(self.device)
+                fmri = fmri.to(self.device, non_blocking=True)
+                images = images.to(self.device, non_blocking=True)
                 
                 # Get embeddings
                 fmri_emb = self.fmri_encoder(fmri)
@@ -315,7 +356,7 @@ def test_dataset_path():
     """Test if dataset path is accessible"""
     from pathlib import Path
 
-    dataset_path = Path("../dataset/miyawaki_structured_28x28.mat")
+    dataset_path = Path("../../dataset/miyawaki_conditions_2to5_combined_sharp.mat")
 
     if dataset_path.exists():
         print(f"✅ Dataset found: {dataset_path.absolute()}")
@@ -342,7 +383,7 @@ def main():
     decoder = MiyawakiDecoder()
 
     # Load data
-    mat_file_path = "../dataset/miyawaki_structured_28x28.mat"  # Updated path
+    mat_file_path = "../../dataset/miyawaki_conditions_2to5_combined_sharp.mat"  # Updated path
     decoder.load_data(mat_file_path)
     
     # Initialize models
